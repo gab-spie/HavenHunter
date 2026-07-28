@@ -1,0 +1,48 @@
+# Secrets and credentials. Never commit these.
+.env
+.env.*
+!.env.example
+secrets/
+service_account.json
+*service_account*.json
+*credentials*.json
+*.pem
+*.key
+
+# Local, private configuration (only the example is tracked)
+config.yaml
+!config.example.yaml
+
+# Private source connectors are kept out of the public repository
+src/havenhunter/sources/private/
+connectors_private/
+
+# Local state, data, logs, exports
+*.db
+*.sqlite3
+data/
+logs/
+exports/
+*.log
+
+# Browser automation profiles / caches
+.chrome_*/
+.playwright/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,45 @@
+# HavenHunter example configuration.
+#
+# Copy this file to config.yaml and adjust. No secrets belong here: tokens,
+# chat ids and credential paths are read from the environment (see .env.example).
+#
+# The engine runs one independent search per profile. A common block holds
+# rules shared by every profile.
+
+common:
+  furnished_required: true
+  excluded_areas: []          # numeric area codes to skip, e.g. [18]
+
+profiles:
+
+  shared_flat:
+    label: "Shared flat (2 bedrooms)"
+    min_rooms: 2
+    default_max_price: 1750
+    budgets_per_source:        # per-source ceilings override the default
+      example: 1750
+    excluded_keywords: []
+    message_template: |
+      Hello,
+
+      Your listing looks like a great fit and we would love to arrange a visit.
+      We are two graduate students starting paid internships in the area, with
+      solid guarantors. We are available quickly.
+
+      Kind regards.
+
+  solo:
+    label: "Studio / one-room, solo"
+    min_rooms: 0
+    default_max_price: 850
+    budgets_per_source:
+      example: 850
+    excluded_keywords: ["shared", "sublet"]
+    message_template: |
+      Hello,
+
+      Your listing looks like a great fit and I would love to arrange a visit.
+      I am a graduate student starting a paid internship in the area, with a
+      guarantor. I am available at your convenience.
+
+      Kind regards.

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example launchd agent (macOS) to keep the bot running and restart it on crash
+  or after login. Copy to ~/Library/LaunchAgents/, edit the paths, then:
+
+      launchctl load ~/Library/LaunchAgents/com.havenhunter.bot.plist
+
+  This is an OS-level alternative to the in-process schedule. Nothing here is
+  machine-specific: replace the placeholder paths with your own.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.havenhunter.bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/ABSOLUTE/PATH/TO/.venv/bin/python</string>
+        <string>-m</string>
+        <string>havenhunter.app</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/ABSOLUTE/PATH/TO/HavenHunter</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/ABSOLUTE/PATH/TO/HavenHunter/src</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/ABSOLUTE/PATH/TO/HavenHunter/logs/bot.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/ABSOLUTE/PATH/TO/HavenHunter/logs/bot.err.log</string>
+</dict>
+</plist>

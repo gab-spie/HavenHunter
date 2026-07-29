@@ -29,8 +29,10 @@ for a fast, guided review.
 - **Guided Telegram review.** Instead of a wall of results, matches arrive one
   card at a time with Validate / Skip / Done buttons, a live counter, an origin
   badge, and a ready-to-copy contact message in its own bubble.
-- **Google Sheets tracking.** Validated listings and their status land in a
-  shared sheet that doubles as a team-readable tracker.
+- **Google Sheets tracking, one tab per profile.** Validated listings and their
+  status land in a shared sheet that doubles as a team-readable tracker. Each
+  profile logs to its own worksheet tab, so parallel searches keep separate,
+  self-contained trails.
 - **Runs on a schedule** and survives restarts without losing its memory.
 
 ## Architecture
@@ -123,7 +125,7 @@ src/havenhunter/
   dedup.py         # DedupStore interface + in-memory implementation
   ranking.py       # transparent best-first scoring heuristic
   notifier.py      # Telegram guided-review flow
-  sheets.py        # Google Sheets logging via service account
+  sheets.py        # Google Sheets logging, one worksheet tab per profile
   export.py        # CSV export of a run
   pipeline.py      # gather -> filter -> dedup -> rank
   app.py           # wiring + Telegram commands + schedule + entry point
@@ -131,6 +133,7 @@ tests/
   test_pipeline.py # end-to-end run against the example source
   test_ranking.py  # ranking order and scoring
   test_export.py   # CSV export round-trip
+  test_sheets.py   # per-profile tab routing and row shape
 deploy/            # launchd example + deployment notes
 .github/workflows/ # CI (pytest on push)
 ```

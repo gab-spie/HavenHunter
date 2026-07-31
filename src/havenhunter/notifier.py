@@ -7,9 +7,9 @@ Done. A second bubble underneath holds only a ready-to-copy contact message.
 
 Design choices worth noting:
 
-* Inline keyboards only ever use http(s) or tg:// URLs. Other schemes silently
-  break the whole keyboard on Telegram, so links are constrained by
-  construction.
+* Inline keyboards only ever link out via http(s) URLs. Anything else is
+  omitted instead of handed to Telegram: an unexpected scheme silently breaks
+  the whole keyboard, and a source-supplied URL is not trusted input.
 * Every button press answers instantly with a toast, then edits the card in
   place. Any slower bookkeeping (logging, persistence) happens after the toast,
   so the UI never feels dead.
@@ -20,12 +20,15 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler
 
 from .config import Profile
 from .models import Listing
+
+_ALLOWED_URL_SCHEMES = {"http", "https"}
 
 
 @dataclass
@@ -72,10 +75,19 @@ def message_for(profile: Profile, listing: Listing) -> str:
 
 
 class Notifier:
-    def __init__(self, app: Application, chat_id: int, profiles: dict[str, Profile]):
+    def __init__(
+        self,
+        app: Application,
+        chat_id: int,
+        profiles: dict[str, Profile],
+        allowed_ids: frozenset[int] | None = None,
+    ):
         self._app = app
         self._chat_id = chat_id
         self._profiles = profiles
+        # Owner-only, same as the command handlers: CallbackQueryHandler has no
+        # filters argument, so this is enforced entirely inside _on_button.
+        self._allowed_ids = allowed_ids if allowed_ids is not None else frozenset({chat_id})
         self._reviews: dict[int, Review] = {}
         app.add_handler(CallbackQueryHandler(self._on_button, pattern=r"^rv:"))
 
@@ -104,14 +116,20 @@ class Notifier:
         await self._render(self._chat_id)
 
     def _keyboard(self, listing: Listing) -> InlineKeyboardMarkup:
-        rows = [
-            [InlineKeyboardButton("Open listing", url=listing.url)],
+        rows = []
+        scheme = urlparse(listing.url).scheme.lower()
+        if scheme in _ALLOWED_URL_SCHEMES:
+            rows.append([InlineKeyboardButton("Open listing", url=listing.url)])
+        # Any other scheme (or none) is dropped rather than passed to Telegram:
+        # a bad scheme silently breaks the whole inline keyboard, not just
+        # this one button.
+        rows.append(
             [
                 InlineKeyboardButton("Validate", callback_data="rv:ok"),
                 InlineKeyboardButton("Skip", callback_data="rv:skip"),
-            ],
-            [InlineKeyboardButton("Done for now", callback_data="rv:done")],
-        ]
+            ]
+        )
+        rows.append([InlineKeyboardButton("Done for now", callback_data="rv:done")])
         return InlineKeyboardMarkup(rows)
 
     def _card_text(self, review: Review, listing: Listing) -> str:
@@ -167,7 +185,15 @@ class Notifier:
 
     async def _on_button(self, update: Update, _context) -> None:
         query = update.callback_query
+        if query is None or query.message is None:
+            return
         chat_id = query.message.chat_id
+        user = update.effective_user
+        if chat_id not in self._allowed_ids or (
+            user is not None and user.id not in self._allowed_ids
+        ):
+            return  # not the owner: ignore silently, no toast, no bookkeeping
+
         review = self._reviews.get(chat_id)
         action = query.data.split(":", 1)[1]
 

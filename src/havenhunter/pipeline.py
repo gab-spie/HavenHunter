@@ -13,6 +13,7 @@ or timing out never takes down the run, it just contributes nothing that pass.
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 
 from .config import Profile
@@ -20,6 +21,10 @@ from .dedup import DedupStore
 from .models import Listing
 from .ranking import rank
 from .sources import Source, build
+
+# How long a single source gets to answer before it is treated as a failure.
+# Configurable via env so a slow connector can be tuned without a code change.
+FETCH_TIMEOUT_SECONDS = float(os.environ.get("SOURCE_FETCH_TIMEOUT_SECONDS", "30"))
 
 
 @dataclass
@@ -29,11 +34,19 @@ class RunResult:
     fresh: list[Listing]     # new, never-seen matches, best-first
 
 
-async def _safe_fetch(source: Source, max_price: int) -> list[Listing]:
+async def _safe_fetch(
+    source: Source, max_price: int, timeout: float = FETCH_TIMEOUT_SECONDS
+) -> list[Listing]:
     try:
-        return await source.fetch(max_price=max_price)
+        return await asyncio.wait_for(source.fetch(max_price=max_price), timeout=timeout)
+    except asyncio.TimeoutError:
+        print(f"[source {source.name}] failed: timed out after {timeout}s")
+        return []
     except Exception as exc:  # one bad source must not sink the run
-        print(f"[source {source.name}] failed: {exc}")
+        # Log the exception type and source only, never str(exc): a
+        # connector's error text can carry request URLs, headers or other
+        # details that should not end up in shared logs.
+        print(f"[source {source.name}] failed: {type(exc).__name__}")
         return []
 
 

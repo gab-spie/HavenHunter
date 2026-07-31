@@ -21,13 +21,34 @@ from .models import Listing
 
 _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
+    # drive.file, not the full drive scope: the service account only ever
+    # needs to see the one sheet that has been shared with it by name, not
+    # every file in the account/domain it happens to have access to.
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 HEADERS = ["timestamp", "source", "title", "price", "area", "url", "status"]
 DEFAULT_WORKSHEET = "Log"
 _URL_COLUMN = 6     # 1-indexed position of "url" in HEADERS
 _STATUS_COLUMN = 7  # 1-indexed position of "status" in HEADERS
+
+# Leading characters a spreadsheet reads as "this cell is a formula".
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_cell(value):
+    """Defuse formula injection from scraped, untrusted listing text.
+
+    A title or area label comes straight from a source connector, not from
+    us. A cell that starts with =, +, -, @ or a leading tab/CR is executed as
+    a formula by Excel, Sheets and LibreOffice, so a crafted listing could run
+    arbitrary formulas (including remote-fetch payloads) in whoever opens the
+    log. Prefixing a single quote forces text interpretation without changing
+    the visible value.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
+        return "'" + value
+    return value
 
 
 def worksheet_title_for(profile: Optional[str]) -> str:
@@ -38,7 +59,7 @@ def worksheet_title_for(profile: Optional[str]) -> str:
 
 def row_for(listing: Listing, status: str) -> list:
     """Single source of truth for a log row, aligned with HEADERS."""
-    return [
+    row = [
         datetime.now().isoformat(timespec="seconds"),
         listing.source,
         listing.title,
@@ -47,6 +68,7 @@ def row_for(listing: Listing, status: str) -> list:
         listing.url,
         status,
     ]
+    return [_sanitize_cell(v) for v in row]
 
 
 class SheetLog:
@@ -106,7 +128,7 @@ class SheetLog:
         row = row_for(listing, status)
         for attempt in range(2):
             try:
-                self._worksheet(title).append_row(row)
+                self._worksheet(title).append_row(row, value_input_option="RAW")
                 return True
             except APIError:
                 if attempt == 0:

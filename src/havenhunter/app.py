@@ -9,7 +9,7 @@ Run:  python -m havenhunter.app
 from __future__ import annotations
 
 from telegram import BotCommand, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 from . import config as cfg
 from .dedup import InMemoryStore
@@ -44,13 +44,6 @@ class Engine:
             await self.scan_profile(name, announce_empty=announce_empty)
 
 
-async def _cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "HavenHunter is online.\n"
-        "/scan to search now, /status for configuration."
-    )
-
-
 def build_engine_and_app() -> tuple[Engine, Application]:
     settings = cfg.load("config.yaml")
     engine = Engine(settings)
@@ -61,21 +54,52 @@ def build_engine_and_app() -> tuple[Engine, Application]:
         .build()
     )
 
+    # Every handler below is owner-only. The bot receives updates from anyone
+    # who messages it on Telegram, not just the configured owner, so both the
+    # handler registration (chat filter) and the handler body (defensive
+    # check) must reject strangers before any command does real work.
+    allowed_ids = settings.telegram_allowed_ids
+    chat_filter = filters.Chat(chat_id=set(allowed_ids))
+
+    def _authorized(update: Update) -> bool:
+        chat = update.effective_chat
+        if chat is None or chat.id not in allowed_ids:
+            return False
+        user = update.effective_user
+        if user is not None and user.id not in allowed_ids:
+            return False
+        return True
+
+    async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        message = update.effective_message
+        if not _authorized(update) or message is None:
+            return
+        await message.reply_text(
+            "HavenHunter is online.\n"
+            "/scan to search now, /status for configuration."
+        )
+
     async def cmd_scan(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-        await update.message.reply_text("Searching...")
+        message = update.effective_message
+        if not _authorized(update) or message is None:
+            return
+        await message.reply_text("Searching...")
         await engine.scan_all()
 
     async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        message = update.effective_message
+        if not _authorized(update) or message is None:
+            return
         lines = [f"Sources: {', '.join(engine.sources)}"]
         for profile in settings.profiles.values():
             lines.append(f"- {profile.label} (min rooms {profile.criteria.min_rooms})")
-        await update.message.reply_text("\n".join(lines))
+        await message.reply_text("\n".join(lines))
 
-    app.add_handler(CommandHandler("start", _cmd_start))
-    app.add_handler(CommandHandler("scan", cmd_scan))
-    app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("start", cmd_start, filters=chat_filter))
+    app.add_handler(CommandHandler("scan", cmd_scan, filters=chat_filter))
+    app.add_handler(CommandHandler("status", cmd_status, filters=chat_filter))
 
-    engine.notifier = Notifier(app, int(settings.telegram_chat_id), settings.profiles)
+    engine.notifier = Notifier(app, settings.telegram_chat_id, settings.profiles, allowed_ids)
     return engine, app
 
 
